@@ -1,55 +1,37 @@
-# Inspired from https://github.com/actions/starter-workflows/blob/main/pages/nextjs.yml
-name: GitHub Pages
+name: Build & Deploy
 
 on:
   push:
-    branches: main
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: 'pages'
-  cancel-in-progress: false
+    branches: [ main ]
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
+      # 1) 소스 체크아웃
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: yarn
-      - id: configurepages
-        uses: actions/configure-pages@v5
-      - name: Restore cache
-        uses: actions/cache@v4
-        with:
-          path: .next/cache
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('**/yarn.lock') }}-${{ hashFiles('**.[jt]s', '**.[jt]sx') }}
-          restore-keys: |
-            ${{ runner.os }}-nextjs-${{ hashFiles('**/yarn.lock') }}-
-      - run: yarn
-      - run: yarn build
-        env:
-          EXPORT: 1
-          UNOPTIMIZED: 1
-          BASE_PATH: ${{ steps.configurepages.outputs.base_path }}
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./out
 
-  # Deployment job
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      # 2) Docker Hub 로그인
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 3) Docker 이미지 빌드 & 푸시
+      - name: Build & Push Docker Image
+        run: |
+          TAG=${{ github.sha }}
+          IMAGE=${{ vars.DOCKERHUB_USERNAME }}/blog:${TAG}
+          docker build -t $IMAGE .
+          docker push $IMAGE
+          echo "IMAGE_TAG=$TAG" >> $GITHUB_ENV
+
+      # 4) deployment.yaml 이미지 태그 변경
+      - name: Update Deployment Tag
+        run: |
+          pip install yq -q
+          yq -i '.spec.template.spec.containers[0].image = "${{ vars.DOCKERHUB_USERNAME }}/blog:${{ env.IMAGE_TAG }}"' cd/deployment.yaml
+          git config user.name "gha-bot"
+          git config user.email "[email protected]"
+          git commit -am "chore: bump image to ${{ env.IMAGE_TAG }}"
+          git push
