@@ -1,0 +1,133 @@
+---
+title: 'Cloudflare 프록시(인증서 체인) + Ingress Controller'
+date: '2025-07-27'
+tags: ['cloudflare', 'ssl', 'kubernetes']
+draft: false
+summary: '이번 글에서는 클라우드 플레이어 인증서 체인과 인증서를 활용하여 인그레스 컨트롤러에 적용할예정'
+---
+
+이번 글에서는   클라우드 플레이어 인증서 체인과 인증서를 활용하여 인그레스 컨트롤러에 적용하려한다.
+
+그 전에 밑에있는 CloudFlare와 관련된 글을 한번 읽어보면  도움이 될 것이다.
+
+[Cloudflare 인증서 발급 및 TLS 적용(티스토리 원본 글 보기)](https://wngud.tistory.com/entry/TLS%EB%A5%BC-%ED%86%B5%ED%95%B4-%EC%9D%B8%EC%A6%9D%EC%84%9C%EB%A5%BC-%EB%B6%99%EC%9D%B4%EA%B8%B0)
+
+CloudFlare 인증서 발급 및 TLS 적용
+
+클라우드 플레이어  구조는 그림과 같이 간단하게 구성 되어있다.
+
+![설명](/static/images/클라우드프록시사진.png)
+
+#### **1\. 클라우드 플레이어 개요**
+
+간단하게 클라우드 플레이어 구조를 설명하겠다.
+
+클라이언트가 서버에 데이터를 전송하거나 요청할때 클라우드 플레이어 프록시를 거친다.  
+
+클라우드 플레이어에서는  DNS 이용해 도메인을 서버 IP로 바꿔서 서버에 전달하는 형식이다.  
+
+여기서 특별한점이있다. 클라우드 플레이어는 단순한 DNS 역할을 넘어, **프록시(Proxy) 역할**까지 하기 때문에, 서버의 실제 IP가 아닌 **Cloudflare의 IP**를 노출한다. 
+
+**Cloudflare를 사용하면 원본 서버 IP가 노출되지 않아 DDos 및 해킹 공격을 방어할 수 있다.**
+
+이제 위의 과정을 통한  인증서 체인 구조에 대해 설명하겠다.
+
+---
+
+#### **2\. 인증서 체인 구조** 
+
+1\. 클라이언트 → 클라우드 플레이어
+
+1.  **클라이언트(브라우저) ↔ Cloudflare** 간에 TLS Handshake가 일어남 
+2.  이 때, **클라이언트는 Cloudflare가 제시하는  SSL 인증서**를 확인
+3.  브라우저는 해당 인증서 체인을 신뢰하므로, 안전한 HTTPS 통신임을 인지
+
+클라이언트 관점에서는 서버로 보이는 인증서는 사실 CloudFlare 인증서다. 
+
+2\. 클라우드 플레이어 → 서버(Origin)
+
+1.  브라우저에서 받은 HTTPS 트래픽을 **Cloudflare가 내부에서 복호화**한 뒤, 서버 쪽으로 **다시** HTTPS로 전송   
+
+     => 클라우드 플레이어에서 SSL/TLS **보안 강도**를 통해 서버 쪽으로 HTTP로 보낼수도 있음 
+
+  2. Cloudflare ↔ 서버 간에는 **Origin Certificate**로 TLS를 맺는다.
+
+-  서버 쪽에는 Cloudflare Origin CA가 발급해준 **서버 인증서**(cert.pem)와 **서버 개인키**(privkey.pem)가 배포되어 있음
+- Cloudflare가 해당 Origin 인증서를 신뢰(Full 모드)하면, **이 구간 역시 HTTPS**로 암호화가 된다
+
+    3.  서버에서 **Cloudflare Origin CA 인증서**를 제시하면, Cloudflare는 이를 확인 후 정상적으로 TLS를 맺는다.
+
+-  서버 관점에서는 Cloudflare가 클라이언트 역할을 하여 HTTPS를 맺는다. 
+
+이러한 체인구조를 생성하면 다음과 같은 장점이있다.
+
+- **서버 IP 보호**:
+  - 실제 서버 IP 대신 **Cloudflare IP**가 노출되므로, DDoS나 직접 해킹 시도가 어려워짐.
+- **중간에서의 추가 보안**:
+  - Cloudflare가 악성 요청을 차단하거나, CDN 캐싱 등을 통해 성능을 최적화할 수 있음.
+- **Origin 인증서 부담 낮춤**:
+  - Cloudflare Origin CA 인증서는 무료로 발급되며, 만료 기한이 매우 길어 관리가 쉬움.
+
+CloudFlare에서 제공하는 보안강도는 총 5가지로 구성되어있다.
+
+| **Off (비활성화)**                | TLS(SSL) 암호화 없이 HTTP만 사용                                                      |  **암호화 없음 (HTTP)**           |     |
+| --------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------- | --- |
+| **Flexible**                      | 클라이언트 ↔ Cloudflare는 HTTPS, Cloudflare ↔ 원본 서버는 HTTP                      | **암호화 없음 (HTTP)**            |     |
+| **Full**                          | 클라이언트 ↔ Cloudflare, Cloudflare ↔ 원본 서버 둘 다 HTTPS (자체 서명 인증서 가능) | **자체 서명 가능 (HTTPS)**        |     |
+| **Full (Strict)**                 | 클라이언트 ↔ Cloudflare, Cloudflare ↔ 원본 서버 모두 HTTPS (공인된 인증서 필요)     | **공인된 CA 인증서 필요 (HTTPS)** |     |
+| **Strict (SSL-Only Origin Pull)** | Full (Strict) 모드 + Cloudflare 인증서만 허용                                         | **Cloudflare 전용 CA 필요**       |     |
+
+이 중에서 **Full(Strict) 또는 Strict 모드를 사용하는 것이 가장 안전하다!**
+
+---
+
+이제 인증서 체인 구조에 대해 설명했으니 ingressController에 적용해 보려 한다!
+
+인증서 발급 과정과 나머지 과정은 위 링크에  자세히 적어놨으니 생략하겠다.
+
+#### **3\. ingress에  CloudFlare 인증서 적용** 
+
+Cloudflare 인증서를 Kubernetes의 Ingress Controller에 적용하려면, 먼저 **Cloudflare Origin CA를 TLS Secret으로 등록해야 한다.**
+
+Kubernetes에 해당 인증서를 TLS Secret으로 생성한다.
+
+```
+kubectl create secret tls cloudflare-origin-cert \
+  --cert=./cert.pem \
+  --key=./privkey.pem \
+  -n <원하는_네임스페이스>
+```
+
+생성된 Secret(cloudflare-origin-cert) 과  네임스페이스를 이후 ingress.yaml에 참조한다.
+
+아래처럼 **생성된 Secret을 Ingress 리소스에서 참조**하면 된다.
+
+```
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: my-ingress
+  namespace: <원하는_네임스페이스>
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    # 필요하다면 실 IP 추적을 위한 프록시 설정
+    # nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
+spec:
+  tls:
+    - hosts:
+        - example.com
+      secretName: cloudflare-origin-cert   # (1) 아까 만든 Secret 이름
+  rules:
+    - host: example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: my-service
+                port:
+                  number: 80
+```
+
+이렇게 설정한 시크릿 이름과 클라우드 플레이어에서 등록한 도메인을 입력하면 HTTPS 통신이 가능해진다.

@@ -26,8 +26,8 @@ export const metadata: Metadata = {
   },
   description: siteMetadata.description,
   openGraph: {
-    title: siteMetadata.title,
-    description: siteMetadata.description,
+    title: 'zkrp',
+    description: '카게의 사이트입니다!',
     url: './',
     siteName: siteMetadata.title,
     images: [siteMetadata.socialBanner],
