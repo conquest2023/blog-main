@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: blog-web
-          image: wngud1/blog:0.1.9 # Actions에서 여기 태그만 자동 변경
+          image: wngud1/blog:8e86f0641231bc70ed3a1fb56901a3a5f08fe77a
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
