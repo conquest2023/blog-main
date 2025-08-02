@@ -30,7 +30,7 @@ jobs:
       - name: Update Deployment Tag
         run: |
           pip install yq -q
-          yq -i '.spec.template.spec.containers[0].image = "${{ vars.DOCKERHUB_USERNAME }}/blog:${{ env.IMAGE_TAG }}"' cd/deployment.yaml
+          yq -i -y '.spec.template.spec.containers[0].image = "wngud1/blog:${{ env.IMAGE_TAG }}"' cd/deployment.yaml
           git config user.name "gha-bot"
           git config user.email "[email protected]"
           git commit -am "chore: bump image to ${{ env.IMAGE_TAG }}"
