@@ -1,7 +1,8 @@
 {
-  "ci": 1,
-  "cd": 1,
-  "devops": 1,
+  "ci": 2,
+  "cd": 2,
+  "devops": 2,
+  "argocd": 1,
   "cloudflare": 2,
   "ssl": 2,
   "kubernetes": 2
