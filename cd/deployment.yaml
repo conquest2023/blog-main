@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: blog-web
-          image: wngud1/blog:8e86f0641231bc70ed3a1fb56901a3a5f08fe77a
+          image: wngud1/blog:196edab987474a5c83918dc1e488eda6bdc2b1a5
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
