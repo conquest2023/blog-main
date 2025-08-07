@@ -3,7 +3,10 @@
   "cd": 2,
   "devops": 2,
   "argocd": 1,
-  "cloudflare": 2,
-  "ssl": 2,
-  "kubernetes": 2
+  "cloudflare": 1,
+  "ssl": 1,
+  "kubernetes": 1,
+  "network": 1,
+  "session": 1,
+  "redis": 1
 }
