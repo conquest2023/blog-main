@@ -1,12 +1,16 @@
 {
+  "redis": 3,
+  "datastructure": 1,
+  "java": 1,
+  "kubernetes": 2,
+  "docker": 1,
+  "infra": 1,
+  "devops": 3,
   "network": 2,
   "session": 2,
-  "redis": 2,
   "ci": 2,
   "cd": 2,
-  "devops": 2,
   "argocd": 1,
   "cloudflare": 1,
-  "ssl": 1,
-  "kubernetes": 1
+  "ssl": 1
 }

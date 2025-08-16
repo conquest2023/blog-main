@@ -1,0 +1,244 @@
+---
+title: 'Redis 자료구조'
+date: '2025-08-16'
+tags: ['Redis', 'DataStructure', 'JAVA']
+draft: false
+summary: '이번 글에서는 레디스 자료구조에 대해 설명하려합니다'
+---
+
+안녕하세요! 이번에 가상면접 프로젝트를 진행하며 실시간으로 면접 상태를 관리하고, 사용자의 답변 목록을 효율적으로 처리해야 했기 때문에 Redis를 사용하게 되었습니다. 
+
+이번 글에서 가상 면접 프로젝트에 Redis를 어떻게 적용했는지 글을 통해 공유하고자 합니다.
+
+일단 제가 Redis에 프로젝트를 어떻게 적용했는지 설명하기 전에  Redis 기본 문법과 자료구조부터 설명하려 합니다.
+
+### 1\. Redis  자료 구조
+
+#### 1.1) String 
+
+레디스에서 데이터를 저장할 수 있는 가장 간단한 자료구조
+
+- 최대 512MB의 문자열 데이터를 저장
+- String은 키와 실제 저장되는 아이템이 일대일로 연결되는 유일한 자료 구조 
+  - 키가 만약에 다른 값과 연결돼 있었다면 기존 값은 새로 입력된 값으로 대체합니다.
+  - SET 과 함께 NX 옵션을 사용하면 지정한 키가 없을 때에만 새로운 키를 저장합니다.
+
+- 이진 데이터를 포함하는 모든 종류의 문자열이 binary-safe하게 처리할 수 있습니다.
+  - JPEG 이미지와 같은 바이트 값, HTTP 응답값 등의 다양한 데이터를 저장하는 것 가능합니다.
+
+```
+SET hello world
+OK
+GET hello
+"world"
+```
+
+#### 1.2) List
+
+Redis 에서 List는 순서를 가지는 문자열입니다, 일반적으로 list는 서비스에서 스택과 큐로서 사용됩니다.
+
+1.2.1) List의 기능 
+
+- LPUSH - list의 왼쪽에 데이터를 추가 - 시간복잡도 **O(1)**
+  - LINSERT 는 원하는 데이터의 앞이나 뒤에 데이터를 추가할 수 있습니다.
+    - 앞에 추가하려면 BEFORE 뒤에 추가하려면 AFTER 옵션을 추가
+- RPUSH - list의 오른쪽 데이터를 추가 -시간복잡도  **O(1)**
+- LRANGE - list에 들어 있는 데이터를 조회  - 시간복잡도 **O(N)**
+  - 가장 오른쪽에 있는 아이템의 인덱스는 -1, 그 앞의 인덱스는 -2로 표현합니다. 
+- LPOP - list에 저장된 첫 번째 아이템을 반환하는 동시에 list에서 삭제합니다.- 시간복잡도 **O(1)**
+- LTRIM - 지정한 범위에 속하지 않은 아이템은 모두 삭제
+  - LPOP과 달리 삭제되는 아이템을 반환하지는 않습니다.
+
+#### 1.3)  Hash
+
+레디스에서 Hash는 하나의 hash 자료 구조 내에서 아이템은 필드-값 쌍으로 저장하는 자료구조 입니다.
+
+1.3.1) Hash의 특징
+
+- 필드는 하나의 hash 내에서 유일하며, 필드와 값 모두 문자열 데이터로 저장
+- hash는 객체를 표현하기 적절한 자료 구조이기 때문에 관계형 DB의 단일 레코드와 유사하게 사용될 수 있습니다.
+  - 고정 관계형 DB 의 테이블과 달리, hash는 각 아이템마다 다른 필드를 가질 수 있으며, 동적으로 다양한 필드를 추가 가능
+
+1.3.2) Hash의 기능
+
+- HSET
+  - hash에 아이템을 저장할 수 있으며, 한 번에 여러 필드-값 쌍을 저장할수 있습니다.
+- HMGET key field1 field2 ... fieldN
+  - 시간 복잡도: **O(N)** (N = 요청한 필드 수)
+  - 내부적으로 각 필드를 해시 테이블에서 개별적으로 찾아오기 때문에, 요청 필드 개수에 비례해 시간이 늘어납니다.
+  - 필드 하나 조회는 O(1)인데, N개를 요청하면 O(N)
+- HGETALL key
+  - 시간 복잡도: **O(M)** (M = 해시에 들어있는 전체 필드 수)
+  - 모든 필드-값 쌍을 순회해서 가져와야 하므로 전체 개수에 비례.
+  - 내부적으로는 해시 테이블 버킷을 처음부터 끝까지 스캔.
+- hash에는 새로운 필드에 데이터를 저장할 수 있습니다.
+  - 동적으로 다양한 필드를 추가
+- 필드 단위 업데이트가 압도적으로 빠름
+
+Hash는 단일 원소를 넣거나 삽입할때 시간복잡도가 O(1)인지에 대해 설명 드리겠습니다.
+
+이유
+
+- Redis의 Hash 자료구조는 **C언어로 구현된 해시 테이블(dict 구조)** 위에 만들어져 있습니다.
+  - field(필드명)을 **해싱(Hashing)** 해서 해시 버킷 위치를 계산
+  - 해당 버킷에 바로 접근해서 Value를 쓰거나 갱신
+  - 충돌이 있으면 체인(Linked List)이나 다른 충돌 해결 방식으로 저장
+
+  이 과정은 **리스트처럼 전체를 순회하지 않고**, 해시 함수를 통해 바로 찾아가기 때문에 평균 O(1)
+  - 해시 테이블이 너무 꽉 차서 리해싱(rehash)이 발생하면 순간적으로 O(N)
+
+이러한 이유로 Hash는 평균 시간복잡도 0(1)으로 매우 뛰어난 성능을 제공합니다.
+
+#### 1.4)  Set
+
+레디스에서 set은  중복을 허용하지 않는, 정렬되지 않은 문자열의 집합입니다.
+
+하나의 set 자료 구조 내에서 아이템은 중복해서 저장되지 않으며, 교집합 ,합집합 ,차집합 등의 집합 연산과 관련한 커멘드를  제공합니다.
+
+1.4.1) Set의 기능
+
+- SADD
+  - 아이템 저장 - 시간복잡도 **O(1)**
+- SREM
+  - set에서 원하는 데이터를 삭제  - 시간복잡도 **O(1)**
+- SPOP
+  - set 내부의 아이템 중 랜덤으로 하나의 아이템을 반환하는 동시에 set에서 그 아이템을 삭제 - 시간복잡도 **O(1)**
+- SMEMBERS
+  - set 자료 구조에 저장된 전체 아이템 출력  - 시간복잡도 **O(N)**
+- SISMEMBER
+  - 원소가 있는지 확인 - 시간복잡도 **O(1)**
+- SCARD
+  - 원소 개수를 확인 - 시간복잡도 **O(1)**
+
+SET 도 hash기반이므로 평균적으로 시간복잡도 O(1)이므로 뛰어난 성능을 제공합니다.
+
+#### 1.5)   Sorted Set
+
+레디스에서 sorted set(**Skip List** + **Hash Table 구조**)은 스코어 값에 따라 정렬되는 고유한 문자열의 집합입니다.
+
+1.5.1) sorted set의 특징
+
+- 같은 스코어를 가진 아이템은 데이터의 사전 순으로 정렬돼 저장합니다.
+  - 데이터는 중복 없이 유일하게 저장되므로 set과 유사하고 아이템은 스코어라는 데이터와 연결돼 있어 hash하고 유사합니다.
+    - 또한 모든 아이템은 스코어 순으로 정렬돼 있어, list처럼 인덱스를 이용해 각 아이템에 접근 할 수있습니다.
+
+list와 sorted set 모두 순서를 찾는 자료 구조이므로 모두 인덱스를 통해 아이템을 접근할수 있습니다.
+
+배열에 인덱스를 사용하는 것이 더 일반적이기 때문에 레디스에서도 list에서 인덱스를 다루는 것이 더 빠르다고 생각할 수 있지만,
+
+인덱스를 이용해 아이템에 접근할 일이 많다면 list가 아닌 sorted을 사용하는 것이 더 효율적입니다.
+
+list는 인덱스를 이용해 데이터 접근을 하면 O(N)이지만  sorted set에서는 O(log(N))으로 처리됩니다.
+
+1.5.2) sorted set의 기능
+
+- ZADD
+  - sorted set에 데이터 저장
+    - 스코어 -값 쌍으로 입력을 해야함
+    - 스코어가 같으면 데이터는 사전 순으로 정렬됨 - 시간복잡도 **O(log(N))**
+- ZRANGE
+  - 인덱스를 기반으로 데이터를 조회하기 때문에 start와 stop 인자에 검색하고자 하는 첫 번째와 마지막 인덱스를 전달합니다.
+    - WITHSCORE 옵션을 사용하면 데이터와 함께 스코어 값이 차례대로 출력되며, REV 옵션을 사용하면 데이터는 역순으로 출력됩니다
+    - BYSCORE 옵션을 사용하면 스코어를 이용해 데이터를 조회할수 있습니다
+      - start stop 인자 값으로는 조회하고자 하는 최소, 최대 스코어를 전달
+      - inf 를 사용하면 최솟값과 최댓값을 표현할 수 있습니다.
+    - 사전 순으로 데이터를 조회하고 싶으면 BYLEX 옵션을 사용하면 사전적 순서를 이용해 특정 아이템을 조회할 수 있습니다.
+      - 이때 반드시 ( 나 \[ 문자를 함께 입력해야합니다
+        - ex) ZRANGE  mysort (b (f BYLEX
+
+간단한 Redis 기본 문법과 자료구조를 설명했습니다.
+
+이제 프로젝트에 어떻게 적용했는지 설명하겠습니다.
+
+### 2.  프로젝트 적용 
+
+#### 2.1) 적용한 부분
+
+간략하게 설명하자면 저는 이번 프로젝트에 세션 상태, 대화 내역 , 세션 정보 조회에  레디스를 적용했습니다.
+
+처음 부터 설명하겠습니다.
+
+#### 2.2)  설명 
+
+1\. InterviewSession 메타데이터 저장 (Hash 사용)
+
+```
+  @Override
+public void save(InterviewSession session) {
+    String key = "interview:" + session.getSessionId();
+    Map<String, String> meta = session.createMeta(session);
+    redis.opsForHash().putAll(key, meta); // HASH 사용
+    redis.expire(key, Duration.ofHours(3));
+}
+
+  public Map<String,String> createMeta(InterviewSession s) {
+
+        Map<String,String> m = new HashMap<>();
+        m.put("userId", String.valueOf(s.getUserId()));
+        m.put("createdAt",LocalDateTime.now().toString());
+        m.put("lastActivity", s.getLastActivity().toString());
+        m.put("questionCount", "0");
+        return m;
+
+    }
+```
+
+각 면접 세션(InterviewSession)에는 **userId**, **createdAt**, **lastActivity**, **questionCount** 등 여러 가지 속성(메타데이터)이 있습니다. 
+
+이 정보들을 하나의 논리적인 묶음으로 관리해야겠다고 판단이 되었고, 또한 이 속성들중 특정 값만 선택적으로 조회하거나 업데이트를 할 필요가 있었습니다.
+
+만약 이 모든 메타데이터를 String으로 직렬화하여 하나의 값으로 저장했다면,특정 속성 하나를 변경하거나 조회할 때마다 전체 데이터를 가져와 역직렬화하고, 값을 변경한 후 다시 직렬화하여 저장해야 하는 비효율이 발생했을 것입니다.
+
+_Redis의 \_Hash는 필드 단위로 데이터를 관리할 수 있기 때문에_,* 특정 값을 업데이트하거나 가져올 때마다 _O(1)*의 성능을 나타냅니다*.* 이러한 효율성 때문에 면접 세션의 메타데이터 관리에 Hash를 선택하게 되었습니다.
+
+2.면접 대화 이력 저장(List 사용)
+
+```
+Map<String, String> newConversation = new HashMap<>();
+String interview = history.get(history.size() - 1).get("interviewer");
+newConversation.put("interviewer", interview);
+newConversation.put("user", history.get(history.size()-1).get("user"));
+String convKey = CONV_KEY + sessionId;
+String conversationJson = objectMapper.writeValueAsString(newConversation);
+redis.opsForList().rightPush(convKey,conversationJson); // Redis List 사용
+redis.expire(convKey, Duration.ofHours(3));
+```
+
+위 코드는 면접 대화 이력을 저장하는 로직입니다. 
+
+면접 대화 내용은 면접관의 질문과 사용자의 답변이 시간 순서대로 계속 추가되는 형식입니다. 이처럼 순서가 중요하고 지속적으로 데이터가 추가되는 특성 때문에 Redis List를 사용했습니다
+
+만약 이 모든 데이터를 Hash나 String 으로 저장했다면 사용자가 대화 내역을 다시 가져올때 순서가 정렬되지 않으므로 불편함을 야기할수 있습니다.
+
+sorted set을 사용할 수 있었지만 Redis List는 RPUSH할때  O(1)이고 sorted set 은 O(log(N)) 을 가집니다.
+
+따라서 지속적인 추가 작업이 많은 대화 이력 관리에는 List가 더 효율적이라 판단이 되어 선택하게 되었습니다.
+
+3\. 세션 정보 조회(Hash 사용)
+
+```
+@Override
+public InterviewSession findDetail(String sessionId) {
+    String key = "interview:" + sessionId;
+    // Map<Object, Object> entries = redis.opsForHash().entries(key); // 이전에 O(N)에서 O(1)로 개선
+    Integer questionCount = Integer.valueOf((String) redis.opsForHash().get(key, "questionCount")); // HGET 사용
+    interviewSession.getProgress().setQuestionCount(questionCount);
+    return interviewSession;
+}
+```
+
+위 코드는 세션의 특정 메타데이터를 관리하는 로직입니다.
+
+면접 세션의 상세 정보를 조회할 때, 때로는 모든 속성을 한 번에 가져올 필요 없이 현재까지 진행된 질문 수(\`questionCount\`)와 같이 특정 속성만 빠르게 조회해야 할 필요가 있어서 Hash를 사용하게 되었습니다.
+
+Hash 를 사용하지 않고 String을 사용했다면 불필요한 정보까지 가져오게 되어 네트워크 손실이 일어날 수 있습니다.
+
+그리고 List를 사용한다면 인덱스를 이용해 특정 원소를 가져올떄 O(N)이 발생하므로 성능이 악화 될수있습니다.
+
+하지만 Hash는 특정 원소를 가져올때 O(1)이 발생하여 성능을 향상시킬수 있었습니다.
+
+이번 포스팅에서는 가상 면접 프로젝트에 _Redis를 적용하며 경험했던 \_Redis의 다양한 자료구조 활용 사례와_,\_ 각 자료구조를 선택하게 된 기술적인 이유들을 상세히 공유해 드렸습니다.
+
+이 글이 _Redis를 활용하여 애플리케이션의 성능을 개선하고자 하는 분들께 작은 도움이 되기를 바랍니다_.
+
+긴 글 읽어주셔서 감사합니다!
