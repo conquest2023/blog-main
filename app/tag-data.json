@@ -1,7 +1,9 @@
 {
+  "cs": 1,
+  "os": 1,
+  "java": 2,
   "redis": 3,
   "datastructure": 1,
-  "java": 1,
   "kubernetes": 2,
   "docker": 1,
   "infra": 1,
