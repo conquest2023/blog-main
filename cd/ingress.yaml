@@ -9,10 +9,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - zkrp.site
-      secretName: blog
+        - blog.workly.info
+      secretName: blog-newest
   rules:
-    - host: zkrp.site
+    - host: blog.workly.info
       http:
         paths:
           - path: /
